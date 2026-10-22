@@ -10,7 +10,7 @@ import { Stage } from "./components/Stage"
 import { MiniChart } from "./components/MiniChart"
 import { StepCard, StepNum } from "./components/StepCard"
 import { SelTag } from "./components/SelTag"
-import { PeakNotes } from "./components/PeakNotes"
+import { Annotations } from "./components/Annotations"
 import {
   DotLabel,
   NumField,
@@ -37,16 +37,16 @@ function range(rows: Row[], i: 0 | 1) {
 
 export function App() {
   const d = useDigitizer()
-  const { rows, peaks, issue, invalid, bends } = useCalibration()
+  const { rows, marked, issue, invalid, bends } = useCalibration()
   const { undo, redo } = useHistory()
   const { resolvedTheme, setTheme } = useTheme()
 
   const exportCsv = () => {
-    if (!rows || !peaks) return
+    if (!rows || !marked) return
     const name = downloadCsv(
       rows,
-      peaks,
-      d.notes,
+      marked,
+      d.annotations.map((a) => a.text),
       d.xLabel,
       d.yLabel,
       d.fileName
@@ -57,8 +57,9 @@ export function App() {
   useHotkeys("x", () => d.togglePickMode("xaxis"))
   useHotkeys("y", () => d.togglePickMode("yaxis"))
   useHotkeys("c", () => d.togglePickMode("curve"))
+  useHotkeys("a", () => d.togglePickMode("annotate"))
   useHotkeys("escape", () =>
-    useDigitizer.setState({ pickMode: null, activePeak: null })
+    useDigitizer.setState({ pickMode: null, activeNote: null })
   )
   useHotkeys("mod+s", exportCsv, { preventDefault: true })
   useHotkeys("mod+z", () => undo(), { preventDefault: true })
@@ -143,7 +144,7 @@ export function App() {
                   useDigitizer.setState({ sampleCount: v ?? 500 })
                 }
               />
-              {d.sel.curve && <PeakNotes values={peaks} />}
+              {d.sel.curve && <Annotations marked={marked} />}
             </StepCard>
 
             {/* Step 4 — Export */}
@@ -205,8 +206,9 @@ export function App() {
           zoom and drag to pan; zoom in if a click doesn&apos;t land on a thin
           line. Axis lines can be rotated or in a group with a transform —
           calibration is computed by projection onto each line&apos;s own
-          direction, so that&apos;s fine. Shortcuts: X / Y / C pick, Esc cancel,
-          Ctrl/⌘+Z undo, Ctrl/⌘+Shift+Z redo, + / − / 0 zoom, D theme.
+          direction, so that&apos;s fine. Shortcuts: X / Y / C pick, A annotate,
+          Esc cancel, Ctrl/⌘+Z undo, Ctrl/⌘+Shift+Z redo, + / − / 0 zoom, D
+          theme.
         </footer>
       </div>
     </div>

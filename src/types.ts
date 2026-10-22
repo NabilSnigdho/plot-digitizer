@@ -1,4 +1,4 @@
-export type PickMode = "xaxis" | "yaxis" | "curve" | null
+export type PickMode = "xaxis" | "yaxis" | "curve" | "annotate" | null
 export type AxisScale = "linear" | "log"
 export type Row = [number, number]
 
@@ -22,6 +22,12 @@ export interface PathPoint {
 
 // A local maximum of the curve.
 export type Peak = PathPoint
+
+// A note pinned to a point on the curve.
+export interface Annotation extends PathPoint {
+  id: number
+  text: string
+}
 
 export interface CurveSel {
   el: SVGPathElement

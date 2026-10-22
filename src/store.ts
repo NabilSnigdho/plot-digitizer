@@ -5,7 +5,7 @@ import { shallow } from "zustand/shallow"
 import { useShallow } from "zustand/react/shallow"
 import { temporal } from "zundo"
 import { z } from "zod"
-import type { AxisScale, PickMode, Sel } from "./types"
+import type { Annotation, AxisScale, PathPoint, PickMode, Sel } from "./types"
 import { getRawEndpoints, prepareSvg, toRoot } from "./lib/svg"
 import { AxisScaleSchema, calibrate, SampleCountSchema } from "./lib/calibrate"
 import { findPeaks } from "./lib/peaks"
@@ -42,16 +42,26 @@ interface DigitizerState {
   xLabel: string
   yLabel: string
   sampleCount: number
-  // peak annotations, keyed by index into sel.curve.peaks
-  notes: Record<number, string>
-  activePeak: number | null
+  // notes on points of the curve, in the order they were added
+  annotations: Annotation[]
+  // id of the annotation being edited
+  activeNote: number | null
 
   loadFile: (file: File) => Promise<void>
   togglePickMode: (mode: Exclude<PickMode, null>) => void
   pick: (el: SVGGraphicsElement) => void
   swap: (axis: "x" | "y") => void
-  setNote: (peak: number, text: string) => void
+  addPeakNotes: () => void
+  addNote: (at: PathPoint) => void
+  removeNote: (id: number) => void
+  setNote: (id: number, text: string) => void
 }
+
+// Annotation ids only ever grow, so ones restored by undo never collide.
+let nextNoteId = 1
+
+// Points closer than this fraction of the curve's length count as the same.
+const SAME_POINT = 1e-4
 
 // The part of the state that undo/redo tracks: selections and the form.
 const tracked = ({
@@ -65,7 +75,7 @@ const tracked = ({
   xLabel,
   yLabel,
   sampleCount,
-  notes,
+  annotations,
 }: DigitizerState) => ({
   sel,
   xStart,
@@ -77,7 +87,7 @@ const tracked = ({
   xLabel,
   yLabel,
   sampleCount,
-  notes,
+  annotations,
 })
 
 export const useDigitizer = create<DigitizerState>()(
@@ -97,8 +107,8 @@ export const useDigitizer = create<DigitizerState>()(
         xLabel: "Energy_keV",
         yLabel: "Intensity",
         sampleCount: 500,
-        notes: {},
-        activePeak: null,
+        annotations: [],
+        activeNote: null,
 
         loadFile: async (file) => {
           if (!/svg/i.test(file.type) && !/\.svg$/i.test(file.name))
@@ -109,8 +119,8 @@ export const useDigitizer = create<DigitizerState>()(
             fileName: file.name,
             sel: EMPTY_SEL,
             pickMode: null,
-            notes: {},
-            activePeak: null,
+            annotations: [],
+            activeNote: null,
           })
           // old selections point into the previous drawing
           useDigitizer.temporal.getState().clear()
@@ -118,12 +128,13 @@ export const useDigitizer = create<DigitizerState>()(
 
         togglePickMode: (mode) => {
           if (!get().svg) return
+          if (mode === "annotate" && !get().sel.curve) return
           set((s) => ({ pickMode: s.pickMode === mode ? null : mode }))
         },
 
         pick: (el) => {
           const { pickMode, sel } = get()
-          if (!pickMode) return
+          if (!pickMode || pickMode === "annotate") return
           if (pickMode === "curve") {
             if (!(el instanceof SVGPathElement))
               throw new Error(
@@ -141,8 +152,8 @@ export const useDigitizer = create<DigitizerState>()(
             set({
               sel: { ...sel, curve },
               pickMode: null,
-              notes: {},
-              activePeak: null,
+              annotations: [],
+              activeNote: null,
             })
             return
           }
@@ -158,8 +169,40 @@ export const useDigitizer = create<DigitizerState>()(
               : { yStart: s.yEnd, yEnd: s.yStart }
           ),
 
-        setNote: (peak, text) =>
-          set((s) => ({ notes: { ...s.notes, [peak]: text } })),
+        // Annotates each of the curve's peaks that isn't annotated yet.
+        addPeakNotes: () => {
+          const { sel, annotations } = get()
+          if (!sel.curve) return
+          const tol = sel.curve.length * SAME_POINT
+          const fresh = sel.curve.peaks
+            .filter(
+              (p) => !annotations.some((a) => Math.abs(a.len - p.len) < tol)
+            )
+            .map((p) => ({ ...p, id: nextNoteId++, text: "" }))
+          if (fresh.length) set({ annotations: [...annotations, ...fresh] })
+        },
+
+        addNote: ({ len, pt }) => {
+          const id = nextNoteId++
+          set((s) => ({
+            annotations: [...s.annotations, { len, pt, id, text: "" }],
+            activeNote: id,
+            pickMode: null,
+          }))
+        },
+
+        removeNote: (id) =>
+          set((s) => ({
+            annotations: s.annotations.filter((a) => a.id !== id),
+            activeNote: s.activeNote === id ? null : s.activeNote,
+          })),
+
+        setNote: (id, text) =>
+          set((s) => ({
+            annotations: s.annotations.map((a) =>
+              a.id === id ? { ...a, text } : a
+            ),
+          })),
       }),
       {
         name: "plot-digitizer",
@@ -223,6 +266,8 @@ export function useCalibration() {
       sampleCount: s.sampleCount,
     }))
   )
+  // only where the annotations sit matters, not their text
+  const marks = useDigitizer(useShallow((s) => s.annotations.map((a) => a.len)))
   return useMemo(
     () =>
       calibrate({
@@ -230,7 +275,8 @@ export function useCalibration() {
         x: { start: input.xStart, end: input.xEnd, scale: input.xScale },
         y: { start: input.yStart, end: input.yEnd, scale: input.yScale },
         sampleCount: input.sampleCount,
+        marks,
       }),
-    [input]
+    [input, marks]
   )
 }

@@ -49,12 +49,14 @@ export interface CalibrationInput {
   x: AxisForm
   y: AxisForm
   sampleCount: number
+  // arc lengths of points the output must include exactly (annotations)
+  marks: number[]
 }
 
 export interface CalibrationResult {
   rows: Row[] | null
-  // one row per curve peak (each also present in rows), in curve.peaks order
-  peaks: Row[] | null
+  // one row per mark (each also present in rows), in marks order
+  marked: Row[] | null
   issue: string
   // fields holding a bad (not just missing) value, e.g. "x.start"
   invalid: ReadonlySet<string>
@@ -73,6 +75,7 @@ function axisInverse(a: Axis): (t: number) => number {
 
 export function calibrate({
   sel,
+  marks,
   ...form
 }: CalibrationInput): CalibrationResult {
   const parsed = CalibrationSchema.safeParse(form)
@@ -87,7 +90,7 @@ export function calibrate({
   const bends = xaxis && curve ? findBends(curve, xaxis) : []
   const blocked = (issue: string): CalibrationResult => ({
     rows: null,
-    peaks: null,
+    marked: null,
     issue,
     invalid,
     bends,
@@ -118,10 +121,11 @@ export function calibrate({
     samples.push({ len, row: toData(len) })
   }
 
-  // Each peak's exact point replaces its nearest sample so the data hits the
-  // true maximum; peaks sharing a nearest sample are added alongside it.
+  // Each mark's exact point replaces its nearest sample so the data hits it
+  // (e.g. a peak's true maximum); marks sharing a nearest sample are added
+  // alongside it.
   const taken = new Set<number>()
-  const peaks = curve.peaks.map(({ len }) => {
+  const marked = marks.map((len) => {
     const row = toData(len)
     const i = Math.round((len / curve.length) * (n - 1))
     if (taken.has(i)) samples.push({ len, row })
@@ -136,5 +140,5 @@ export function calibrate({
   samples.sort((a, b) => a.len - b.len)
   const rows = samples.map((s) => s.row)
   if (rows.length > 1 && rows[0][0] > rows[rows.length - 1][0]) rows.reverse()
-  return { rows, peaks, issue: "", invalid, bends }
+  return { rows, marked, issue: "", invalid, bends }
 }

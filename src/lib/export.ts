@@ -4,18 +4,18 @@ import type { Row } from "../types"
 // 8 significant digits keeps tiny log-axis values (e.g. 1.2e-9) intact.
 const num = (v: number) => String(Number(v.toPrecision(8)))
 
-// `peaks` are rows of `rows` (matched by identity); `notes` annotates them by
-// peak index and fills the annotation column, which is blank elsewhere.
+// `marked` are rows of `rows` (matched by identity), one per note in the same
+// order; the notes fill the annotation column, which is blank elsewhere.
 export function downloadCsv(
   rows: Row[],
-  peaks: Row[],
-  notes: Record<number, string>,
+  marked: Row[],
+  notes: string[],
   xLabel: string,
   yLabel: string,
   fileName: string
 ) {
   const noteOf = new Map<Row, string>()
-  peaks.forEach((row, k) => {
+  marked.forEach((row, k) => {
     const text = notes[k]?.trim()
     if (text) noteOf.set(row, text)
   })

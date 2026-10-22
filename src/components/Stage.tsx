@@ -20,12 +20,30 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useDigitizer, useHistory } from "../store"
-import { renderSelection, SHAPE_CLASS } from "../lib/svg"
+import {
+  clientToRoot,
+  drawCrosshair,
+  renderSelection,
+  screenScale,
+  SHAPE_CLASS,
+} from "../lib/svg"
+import { nearestOnCurve } from "../lib/annotate"
 import { C } from "../constants"
-import type { Pt } from "../types"
+import type { CurveSel, Pt } from "../types"
 
 // Moving further than this between pointerdown and click counts as a pan.
 const CLICK_SLOP_PX = 4
+// Within this many screen pixels of the curve, the crosshair snaps onto it.
+const SNAP_PX = 12
+
+// Where the pointer is in the drawing, and the curve point it snaps to (if
+// it is close enough).
+function snapToCurve(svg: SVGSVGElement, curve: CurveSel, e: MouseEvent) {
+  const cursor = clientToRoot(svg, e.clientX, e.clientY)
+  const near = nearestOnCurve(curve, cursor)
+  const hit = near.dist * screenScale(svg) <= SNAP_PX ? near : null
+  return { cursor, hit }
+}
 
 const stageVars = {
   "--dg-x": C.x,
@@ -58,8 +76,8 @@ export function Stage({ bends }: { bends: Pt[] }) {
   const fileName = useDigitizer((s) => s.fileName)
   const pickMode = useDigitizer((s) => s.pickMode)
   const sel = useDigitizer((s) => s.sel)
-  const notes = useDigitizer((s) => s.notes)
-  const activePeak = useDigitizer((s) => s.activePeak)
+  const annotations = useDigitizer((s) => s.annotations)
+  const activeNote = useDigitizer((s) => s.activeNote)
   const hostRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef<ReactZoomPanPinchContentRef>(null)
   const [scale, setScale] = useState(1)
@@ -87,10 +105,16 @@ export function Stage({ bends }: { bends: Pt[] }) {
     const onClick = (e: MouseEvent) => {
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_SLOP_PX)
         return
-      const peak = (e.target as Element).closest("[data-dg-peak]")
-      if (peak) {
-        const activePeak = Number(peak.getAttribute("data-dg-peak"))
-        useDigitizer.setState({ activePeak })
+      const { pickMode, sel, addNote } = useDigitizer.getState()
+      if (pickMode === "annotate") {
+        const hit = sel.curve && snapToCurve(svg, sel.curve, e).hit
+        if (hit) addNote(hit)
+        return
+      }
+      const note = (e.target as Element).closest("[data-dg-note]")
+      if (note) {
+        const activeNote = Number(note.getAttribute("data-dg-note"))
+        useDigitizer.setState({ activeNote })
         return
       }
       const el = (e.target as Element).closest(`.${SHAPE_CLASS}`)
@@ -110,8 +134,27 @@ export function Stage({ bends }: { bends: Pt[] }) {
   }, [svg])
 
   useEffect(() => {
-    if (svg) renderSelection(svg, sel, notes, activePeak, bends)
-  }, [svg, sel, notes, activePeak, bends])
+    if (svg) renderSelection(svg, sel, annotations, activeNote, bends)
+  }, [svg, sel, annotations, activeNote, bends])
+
+  // while adding an annotation, a crosshair follows the pointer: the vertical
+  // line always, the horizontal one too once it snaps onto the curve
+  const curve = sel.curve
+  useEffect(() => {
+    if (!svg || !curve || pickMode !== "annotate") return
+    const onMove = (e: PointerEvent) => {
+      const { cursor, hit } = snapToCurve(svg, curve, e)
+      drawCrosshair(svg, hit?.pt ?? cursor, !!hit)
+    }
+    const onLeave = () => drawCrosshair(svg, null)
+    svg.addEventListener("pointermove", onMove)
+    svg.addEventListener("pointerleave", onLeave)
+    return () => {
+      svg.removeEventListener("pointermove", onMove)
+      svg.removeEventListener("pointerleave", onLeave)
+      drawCrosshair(svg, null)
+    }
+  }, [svg, curve, pickMode])
 
   return (
     <section
@@ -148,7 +191,7 @@ export function Stage({ bends }: { bends: Pt[] }) {
             "dg-stage relative bg-muted/40",
             isDragActive && "ring-2 ring-primary ring-inset"
           )}
-          data-picking={pickMode ? "" : undefined}
+          data-picking={pickMode ?? undefined}
           style={{ ...stageVars, ...checkerboard }}
         >
           <TransformComponent

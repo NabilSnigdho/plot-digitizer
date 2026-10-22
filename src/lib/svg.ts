@@ -1,9 +1,12 @@
 import DOMPurify from "dompurify"
-import type { Pt, Sel } from "../types"
+import type { Annotation, Pt, Sel } from "../types"
 import { C } from "../constants"
 
 const SVG_NS = "http://www.w3.org/2000/svg"
 const MARKERS_ID = "__digitizer_markers"
+const CROSSHAIR_ID = "__digitizer_crosshair"
+// Far enough to cross the whole drawing; the root <svg> clips the rest.
+const CROSSHAIR_REACH = 1e6
 export const SHAPE_CLASS = "dg-shape"
 
 // Sanitizes untrusted SVG markup (scripts, on* handlers, javascript: URLs,
@@ -27,7 +30,53 @@ export function prepareSvg(svgText: string): SVGSVGElement {
   const markers = document.createElementNS(SVG_NS, "g")
   markers.setAttribute("id", MARKERS_ID)
   svg.appendChild(markers)
+  const crosshair = document.createElementNS(SVG_NS, "g")
+  crosshair.setAttribute("id", CROSSHAIR_ID)
+  crosshair.setAttribute("pointer-events", "none")
+  svg.appendChild(crosshair)
   return svg
+}
+
+// Client (screen) coordinates to root <svg> user coordinates.
+export function clientToRoot(svg: SVGSVGElement, x: number, y: number): Pt {
+  const ctm = svg.getScreenCTM()
+  if (!ctm) return { x, y }
+  const t = new DOMPoint(x, y).matrixTransform(ctm.inverse())
+  return { x: t.x, y: t.y }
+}
+
+// Screen pixels per root <svg> unit at the current zoom.
+export function screenScale(svg: SVGSVGElement): number {
+  const ctm = svg.getScreenCTM()
+  return ctm ? Math.hypot(ctm.a, ctm.b) : 1
+}
+
+// Draws the annotation crosshair: a vertical line through `pt`, plus a
+// horizontal one when `onCurve`. Lines are one screen pixel wide at any zoom.
+// Pass null to hide it.
+export function drawCrosshair(
+  svg: SVGSVGElement,
+  pt: Pt | null,
+  onCurve = false
+) {
+  const g = svg.querySelector(`#${CROSSHAIR_ID}`)
+  if (!g) return
+  g.replaceChildren()
+  if (!pt) return
+  const width = String(1 / screenScale(svg))
+  const addLine = (x1: number, y1: number, x2: number, y2: number) => {
+    const l = document.createElementNS(SVG_NS, "line")
+    l.setAttribute("x1", String(x1))
+    l.setAttribute("y1", String(y1))
+    l.setAttribute("x2", String(x2))
+    l.setAttribute("y2", String(y2))
+    l.setAttribute("stroke", C.hover)
+    l.setAttribute("stroke-width", width)
+    l.setAttribute("shape-rendering", "crispEdges")
+    g.appendChild(l)
+  }
+  addLine(pt.x, -CROSSHAIR_REACH, pt.x, CROSSHAIR_REACH)
+  if (onCurve) addLine(-CROSSHAIR_REACH, pt.y, CROSSHAIR_REACH, pt.y)
 }
 
 export function getRawEndpoints(el: SVGGraphicsElement): [Pt, Pt] {
@@ -98,14 +147,14 @@ function svgViewWidth(svg: SVGSVGElement): number {
 }
 
 // Reflects the current selection on the drawing: role attributes (styled in
-// index.css), endpoint markers on the calibration lines, and clickable peak
-// markers (data-dg-peak = peak index) with their annotations, and rings
-// around the curve nodes where it bends backwards.
+// index.css), endpoint markers on the calibration lines, clickable annotation
+// markers (data-dg-note = annotation id) with their text, and rings around
+// the curve nodes where it bends backwards.
 export function renderSelection(
   svg: SVGSVGElement,
   sel: Sel,
-  notes: Record<number, string>,
-  activePeak: number | null,
+  annotations: Annotation[],
+  activeNote: number | null,
   bends: Pt[]
 ) {
   svg
@@ -139,38 +188,39 @@ export function renderSelection(
     addDot(sel.yaxis.p1, C.y2)
   }
 
-  sel.curve?.peaks.forEach(({ pt }, k) => {
-    const note = notes[k]?.trim()
-    const active = k === activePeak
-    const c = document.createElementNS(SVG_NS, "circle")
-    c.setAttribute("data-dg-peak", String(k))
-    c.setAttribute("cx", String(pt.x))
-    c.setAttribute("cy", String(pt.y))
-    c.setAttribute("r", String(active ? r * 1.3 : r))
-    c.setAttribute("fill", note ? C.curve : "white")
-    c.setAttribute("stroke", active ? C.hover : C.curve)
-    c.setAttribute("stroke-width", String(r * 0.4))
-    c.setAttribute("pointer-events", "all")
-    const title = document.createElementNS(SVG_NS, "title")
-    title.textContent = note || `Peak ${k + 1} — click to annotate`
-    c.appendChild(title)
-    ml.appendChild(c)
-    if (!note) return
+  if (sel.curve)
+    for (const { id, pt, text } of annotations) {
+      const note = text.trim()
+      const active = id === activeNote
+      const c = document.createElementNS(SVG_NS, "circle")
+      c.setAttribute("data-dg-note", String(id))
+      c.setAttribute("cx", String(pt.x))
+      c.setAttribute("cy", String(pt.y))
+      c.setAttribute("r", String(active ? r * 1.3 : r))
+      c.setAttribute("fill", note ? C.curve : "white")
+      c.setAttribute("stroke", active ? C.hover : C.curve)
+      c.setAttribute("stroke-width", String(r * 0.4))
+      c.setAttribute("pointer-events", "all")
+      const title = document.createElementNS(SVG_NS, "title")
+      title.textContent = note || "Click to annotate"
+      c.appendChild(title)
+      ml.appendChild(c)
+      if (!note) continue
 
-    const t = document.createElementNS(SVG_NS, "text")
-    t.setAttribute("x", String(pt.x))
-    t.setAttribute("y", String(pt.y - r * 2))
-    t.setAttribute("text-anchor", "middle")
-    t.setAttribute("font-family", "sans-serif")
-    t.setAttribute("font-size", String(r * 2.6))
-    t.setAttribute("fill", active ? C.hover : C.curve)
-    t.setAttribute("stroke", "white")
-    t.setAttribute("stroke-width", String(r * 0.6))
-    t.setAttribute("paint-order", "stroke")
-    t.style.pointerEvents = "none"
-    t.textContent = note
-    ml.appendChild(t)
-  })
+      const t = document.createElementNS(SVG_NS, "text")
+      t.setAttribute("x", String(pt.x))
+      t.setAttribute("y", String(pt.y - r * 2))
+      t.setAttribute("text-anchor", "middle")
+      t.setAttribute("font-family", "sans-serif")
+      t.setAttribute("font-size", String(r * 2.6))
+      t.setAttribute("fill", active ? C.hover : C.curve)
+      t.setAttribute("stroke", "white")
+      t.setAttribute("stroke-width", String(r * 0.6))
+      t.setAttribute("paint-order", "stroke")
+      t.style.pointerEvents = "none"
+      t.textContent = note
+      ml.appendChild(t)
+    }
 
   for (const pt of bends) {
     const c = document.createElementNS(SVG_NS, "circle")

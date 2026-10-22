@@ -143,7 +143,11 @@
 .dg-stage[data-picking] .dg-shape {
   cursor: crosshair;
 }
-.dg-stage[data-picking] .dg-shape:not([data-dg-role]):hover {
+.dg-stage[data-picking="annotate"] svg {
+  cursor: crosshair;
+}
+.dg-stage[data-picking]:not([data-picking="annotate"])
+  .dg-shape:not([data-dg-role]):hover {
   stroke: var(--dg-hover) !important;
   stroke-opacity: 1 !important;
   stroke-width: 3px !important;
@@ -161,11 +165,11 @@
   stroke: var(--dg-curve) !important;
   stroke-width: 2.5px !important;
 }
-.dg-stage [data-dg-peak] {
+.dg-stage [data-dg-note] {
   cursor: pointer;
 }
-/* while picking, clicks pass through peak markers to the shapes underneath */
-.dg-stage[data-picking] [data-dg-peak] {
+/* while picking, clicks pass through annotation markers to the drawing */
+.dg-stage[data-picking] [data-dg-note] {
   pointer-events: none;
 }
 .dg-stage image {
