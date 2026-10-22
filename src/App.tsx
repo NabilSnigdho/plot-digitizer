@@ -43,8 +43,15 @@ export function App() {
 
   const exportCsv = () => {
     if (!rows || !peaks) return
-    downloadCsv(rows, peaks, d.notes, d.xLabel, d.yLabel)
-    toast.success("Downloaded digitized_curve.csv")
+    const name = downloadCsv(
+      rows,
+      peaks,
+      d.notes,
+      d.xLabel,
+      d.yLabel,
+      d.fileName
+    )
+    toast.success(`Downloaded ${name}`)
   }
 
   useHotkeys("x", () => d.togglePickMode("xaxis"))

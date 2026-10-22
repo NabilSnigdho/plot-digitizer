@@ -11,7 +11,8 @@ export function downloadCsv(
   peaks: Row[],
   notes: Record<number, string>,
   xLabel: string,
-  yLabel: string
+  yLabel: string,
+  fileName: string
 ) {
   const noteOf = new Map<Row, string>()
   peaks.forEach((row, k) => {
@@ -25,7 +26,10 @@ export function downloadCsv(
   const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }))
   const a = document.createElement("a")
   a.href = url
-  a.download = "digitized_curve.csv"
+  // Named after the source SVG, with a .csv extension.
+  const name = `${fileName.replace(/\.svg$/i, "") || "digitized_curve"}.csv`
+  a.download = name
   a.click()
   URL.revokeObjectURL(url)
+  return name
 }
