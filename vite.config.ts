@@ -5,6 +5,7 @@ import { defineConfig, lazyPlugins } from "vite-plus"
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: "/plot-digitizer/",
   staged: {
     "*": "vp check --fix",
   },
