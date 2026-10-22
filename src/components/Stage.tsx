@@ -150,18 +150,20 @@ export function Stage() {
             </div>
           </TransformComponent>
           {!svg && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
-              <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
-                <TrendingUp className="size-6" />
-              </div>
-              <div>
-                Upload the SVG you traced in Inkscape
-                <br />
-                (axis lines + curve path) to begin.
-                <br />
-                <span className="text-xs opacity-60">
-                  Or drag-and-drop here.
-                </span>
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+              <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card/95 px-8 py-6 text-center text-sm text-card-foreground shadow-lg backdrop-blur-sm">
+                <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
+                  <TrendingUp className="size-6" />
+                </div>
+                <div>
+                  Upload the SVG you traced in Inkscape
+                  <br />
+                  (axis lines + curve path) to begin.
+                  <br />
+                  <span className="text-xs text-muted-foreground">
+                    Or drag-and-drop here.
+                  </span>
+                </div>
               </div>
             </div>
           )}
