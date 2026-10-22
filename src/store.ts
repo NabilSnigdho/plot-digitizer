@@ -8,6 +8,7 @@ import { z } from "zod"
 import type { AxisScale, PickMode, Sel } from "./types"
 import { getRawEndpoints, prepareSvg, toRoot } from "./lib/svg"
 import { AxisScaleSchema, calibrate, SampleCountSchema } from "./lib/calibrate"
+import { findPeaks } from "./lib/peaks"
 
 const EMPTY_SEL: Sel = { xaxis: null, yaxis: null, curve: null }
 
@@ -40,11 +41,15 @@ interface DigitizerState {
   xLabel: string
   yLabel: string
   sampleCount: number
+  // peak annotations, keyed by index into sel.curve.peaks
+  notes: Record<number, string>
+  activePeak: number | null
 
   loadFile: (file: File) => Promise<void>
   togglePickMode: (mode: Exclude<PickMode, null>) => void
   pick: (el: SVGGraphicsElement) => void
   swap: (axis: "x" | "y") => void
+  setNote: (peak: number, text: string) => void
 }
 
 // The part of the state that undo/redo tracks: selections and the form.
@@ -59,6 +64,7 @@ const tracked = ({
   xLabel,
   yLabel,
   sampleCount,
+  notes,
 }: DigitizerState) => ({
   sel,
   xStart,
@@ -70,6 +76,7 @@ const tracked = ({
   xLabel,
   yLabel,
   sampleCount,
+  notes,
 })
 
 export const useDigitizer = create<DigitizerState>()(
@@ -89,12 +96,21 @@ export const useDigitizer = create<DigitizerState>()(
         xLabel: "Energy_keV",
         yLabel: "Intensity",
         sampleCount: 500,
+        notes: {},
+        activePeak: null,
 
         loadFile: async (file) => {
           if (!/svg/i.test(file.type) && !/\.svg$/i.test(file.name))
             throw new Error("That doesn't look like an SVG file.")
           const svg = prepareSvg(await file.text())
-          set({ svg, fileName: file.name, sel: EMPTY_SEL, pickMode: null })
+          set({
+            svg,
+            fileName: file.name,
+            sel: EMPTY_SEL,
+            pickMode: null,
+            notes: {},
+            activePeak: null,
+          })
           // old selections point into the previous drawing
           useDigitizer.temporal.getState().clear()
         },
@@ -112,8 +128,14 @@ export const useDigitizer = create<DigitizerState>()(
               throw new Error(
                 "pick a bezier path for the curve, not a straight line"
               )
-            const curve = { el, length: el.getTotalLength() }
-            set({ sel: { ...sel, curve }, pickMode: null })
+            const length = el.getTotalLength()
+            const curve = { el, length, peaks: findPeaks(el, length) }
+            set({
+              sel: { ...sel, curve },
+              pickMode: null,
+              notes: {},
+              activePeak: null,
+            })
             return
           }
           const [a, b] = getRawEndpoints(el)
@@ -127,6 +149,9 @@ export const useDigitizer = create<DigitizerState>()(
               ? { xStart: s.xEnd, xEnd: s.xStart }
               : { yStart: s.yEnd, yEnd: s.yStart }
           ),
+
+        setNote: (peak, text) =>
+          set((s) => ({ notes: { ...s.notes, [peak]: text } })),
       }),
       {
         name: "plot-digitizer",

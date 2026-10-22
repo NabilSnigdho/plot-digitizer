@@ -10,6 +10,7 @@ import { Stage } from "./components/Stage"
 import { MiniChart } from "./components/MiniChart"
 import { StepCard, StepNum } from "./components/StepCard"
 import { SelTag } from "./components/SelTag"
+import { PeakNotes } from "./components/PeakNotes"
 import {
   DotLabel,
   NumField,
@@ -36,20 +37,22 @@ function range(rows: Row[], i: 0 | 1) {
 
 export function App() {
   const d = useDigitizer()
-  const { rows, issue, invalid } = useCalibration()
+  const { rows, peaks, issue, invalid } = useCalibration()
   const { undo, redo } = useHistory()
   const { resolvedTheme, setTheme } = useTheme()
 
   const exportCsv = () => {
-    if (!rows) return
-    downloadCsv(rows, d.xLabel, d.yLabel)
+    if (!rows || !peaks) return
+    downloadCsv(rows, peaks, d.notes, d.xLabel, d.yLabel)
     toast.success("Downloaded digitized_curve.csv")
   }
 
   useHotkeys("x", () => d.togglePickMode("xaxis"))
   useHotkeys("y", () => d.togglePickMode("yaxis"))
   useHotkeys("c", () => d.togglePickMode("curve"))
-  useHotkeys("escape", () => useDigitizer.setState({ pickMode: null }))
+  useHotkeys("escape", () =>
+    useDigitizer.setState({ pickMode: null, activePeak: null })
+  )
   useHotkeys("mod+s", exportCsv, { preventDefault: true })
   useHotkeys("mod+z", () => undo(), { preventDefault: true })
   useHotkeys("mod+shift+z, mod+y", () => redo(), { preventDefault: true })
@@ -133,6 +136,7 @@ export function App() {
                   useDigitizer.setState({ sampleCount: v ?? 500 })
                 }
               />
+              {d.sel.curve && <PeakNotes values={peaks} />}
             </StepCard>
 
             {/* Step 4 — Export */}

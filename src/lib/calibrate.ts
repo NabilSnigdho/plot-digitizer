@@ -52,6 +52,8 @@ export interface CalibrationInput {
 
 export interface CalibrationResult {
   rows: Row[] | null
+  // one row per curve peak (each also present in rows), in curve.peaks order
+  peaks: Row[] | null
   issue: string
   // fields holding a bad (not just missing) value, e.g. "x.start"
   invalid: ReadonlySet<string>
@@ -77,23 +79,46 @@ export function calibrate({
   )
 
   const { xaxis, yaxis, curve } = sel
-  if (!xaxis || !yaxis || !curve) return { rows: null, issue: "", invalid }
-  if (!parsed.success) return { rows: null, issue: issues[0].message, invalid }
+  if (!xaxis || !yaxis || !curve)
+    return { rows: null, peaks: null, issue: "", invalid }
+  if (!parsed.success)
+    return {
+      rows: null,
+      peaks: null,
+      issue: issues[0].message,
+      invalid,
+    }
 
   const { x, y, sampleCount } = parsed.data
   const n = Math.min(SAMPLE_MAX, Math.max(SAMPLE_MIN, Math.round(sampleCount)))
   const toX = axisInverse(x)
   const toY = axisInverse(y)
 
-  const rows: Row[] = []
-  for (let i = 0; i < n; i++) {
-    const local = curve.el.getPointAtLength((i / (n - 1)) * curve.length)
-    const p = toRoot(curve.el, local)
-    rows.push([
+  const toData = (len: number): Row => {
+    const p = toRoot(curve.el, curve.el.getPointAtLength(len))
+    return [
       toX(projectOntoLine(p, xaxis.p0, xaxis.p1)),
       toY(projectOntoLine(p, yaxis.p0, yaxis.p1)),
-    ])
+    ]
   }
+
+  const rows: Row[] = []
+  for (let i = 0; i < n; i++) rows.push(toData((i / (n - 1)) * curve.length))
+
+  // Each peak's exact point replaces its nearest sample so the data hits the
+  // true maximum; peaks sharing a nearest sample are appended instead.
+  const taken = new Set<number>()
+  const peaks = curve.peaks.map(({ len }) => {
+    const row = toData(len)
+    const i = Math.round((len / curve.length) * (n - 1))
+    if (taken.has(i)) rows.push(row)
+    else {
+      rows[i] = row
+      taken.add(i)
+    }
+    return row
+  })
+
   rows.sort((a, b) => a[0] - b[0])
-  return { rows, issue: "", invalid }
+  return { rows, peaks, issue: "", invalid }
 }

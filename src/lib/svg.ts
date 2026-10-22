@@ -98,8 +98,14 @@ function svgViewWidth(svg: SVGSVGElement): number {
 }
 
 // Reflects the current selection on the drawing: role attributes (styled in
-// index.css) and endpoint markers on the calibration lines.
-export function renderSelection(svg: SVGSVGElement, sel: Sel) {
+// index.css), endpoint markers on the calibration lines, and clickable peak
+// markers (data-dg-peak = peak index) with their annotations.
+export function renderSelection(
+  svg: SVGSVGElement,
+  sel: Sel,
+  notes: Record<number, string>,
+  activePeak: number | null
+) {
   svg
     .querySelectorAll("[data-dg-role]")
     .forEach((el) => el.removeAttribute("data-dg-role"))
@@ -130,4 +136,37 @@ export function renderSelection(svg: SVGSVGElement, sel: Sel) {
     addDot(sel.yaxis.p0, C.y)
     addDot(sel.yaxis.p1, C.y2)
   }
+
+  sel.curve?.peaks.forEach(({ pt }, k) => {
+    const note = notes[k]?.trim()
+    const active = k === activePeak
+    const c = document.createElementNS(SVG_NS, "circle")
+    c.setAttribute("data-dg-peak", String(k))
+    c.setAttribute("cx", String(pt.x))
+    c.setAttribute("cy", String(pt.y))
+    c.setAttribute("r", String(active ? r * 1.3 : r))
+    c.setAttribute("fill", note ? C.curve : "white")
+    c.setAttribute("stroke", active ? C.hover : C.curve)
+    c.setAttribute("stroke-width", String(r * 0.4))
+    c.setAttribute("pointer-events", "all")
+    const title = document.createElementNS(SVG_NS, "title")
+    title.textContent = note || `Peak ${k + 1} — click to annotate`
+    c.appendChild(title)
+    ml.appendChild(c)
+    if (!note) return
+
+    const t = document.createElementNS(SVG_NS, "text")
+    t.setAttribute("x", String(pt.x))
+    t.setAttribute("y", String(pt.y - r * 2))
+    t.setAttribute("text-anchor", "middle")
+    t.setAttribute("font-family", "sans-serif")
+    t.setAttribute("font-size", String(r * 2.6))
+    t.setAttribute("fill", active ? C.hover : C.curve)
+    t.setAttribute("stroke", "white")
+    t.setAttribute("stroke-width", String(r * 0.6))
+    t.setAttribute("paint-order", "stroke")
+    t.style.pointerEvents = "none"
+    t.textContent = note
+    ml.appendChild(t)
+  })
 }

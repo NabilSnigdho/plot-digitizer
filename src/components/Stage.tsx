@@ -57,6 +57,8 @@ export function Stage() {
   const fileName = useDigitizer((s) => s.fileName)
   const pickMode = useDigitizer((s) => s.pickMode)
   const sel = useDigitizer((s) => s.sel)
+  const notes = useDigitizer((s) => s.notes)
+  const activePeak = useDigitizer((s) => s.activePeak)
   const hostRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef<ReactZoomPanPinchContentRef>(null)
   const [scale, setScale] = useState(1)
@@ -84,6 +86,12 @@ export function Stage() {
     const onClick = (e: MouseEvent) => {
       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_SLOP_PX)
         return
+      const peak = (e.target as Element).closest("[data-dg-peak]")
+      if (peak) {
+        const activePeak = Number(peak.getAttribute("data-dg-peak"))
+        useDigitizer.setState({ activePeak })
+        return
+      }
       const el = (e.target as Element).closest(`.${SHAPE_CLASS}`)
       if (!el) return
       try {
@@ -101,8 +109,8 @@ export function Stage() {
   }, [svg])
 
   useEffect(() => {
-    if (svg) renderSelection(svg, sel)
-  }, [svg, sel])
+    if (svg) renderSelection(svg, sel, notes, activePeak)
+  }, [svg, sel, notes, activePeak])
 
   return (
     <section

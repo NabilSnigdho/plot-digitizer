@@ -161,6 +161,13 @@
   stroke: var(--dg-curve) !important;
   stroke-width: 2.5px !important;
 }
+.dg-stage [data-dg-peak] {
+  cursor: pointer;
+}
+/* while picking, clicks pass through peak markers to the shapes underneath */
+.dg-stage[data-picking] [data-dg-peak] {
+  pointer-events: none;
+}
 .dg-stage image {
   pointer-events: none;
 }
