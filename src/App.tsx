@@ -5,7 +5,7 @@ import { toast } from "sonner"
 import { ArrowLeftRight, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-import { useCalibration, useDigitizer } from "./store"
+import { useCalibration, useDigitizer, useHistory } from "./store"
 import { Stage } from "./components/Stage"
 import { MiniChart } from "./components/MiniChart"
 import { StepCard, StepNum } from "./components/StepCard"
@@ -36,7 +36,8 @@ function range(rows: Row[], i: 0 | 1) {
 
 export function App() {
   const d = useDigitizer()
-  const { rows, issue } = useCalibration()
+  const { rows, issue, invalid } = useCalibration()
+  const { undo, redo } = useHistory()
   const { resolvedTheme, setTheme } = useTheme()
 
   const exportCsv = () => {
@@ -50,6 +51,8 @@ export function App() {
   useHotkeys("c", () => d.togglePickMode("curve"))
   useHotkeys("escape", () => useDigitizer.setState({ pickMode: null }))
   useHotkeys("mod+s", exportCsv, { preventDefault: true })
+  useHotkeys("mod+z", () => undo(), { preventDefault: true })
+  useHotkeys("mod+shift+z, mod+y", () => redo(), { preventDefault: true })
   useHotkeys("d", () => setTheme(resolvedTheme === "dark" ? "light" : "dark"))
 
   const status = !d.svg
@@ -89,8 +92,8 @@ export function App() {
 
           {/* Sidebar */}
           <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[360px]">
-            <AxisStep axis="x" />
-            <AxisStep axis="y" />
+            <AxisStep axis="x" invalid={invalid} />
+            <AxisStep axis="y" invalid={invalid} />
 
             {/* Step 3 — Curve */}
             <StepCard
@@ -192,7 +195,7 @@ export function App() {
           line. Axis lines can be rotated or in a group with a transform —
           calibration is computed by projection onto each line&apos;s own
           direction, so that&apos;s fine. Shortcuts: X / Y / C pick, Esc cancel,
-          + / − / 0 zoom, D theme.
+          Ctrl/⌘+Z undo, Ctrl/⌘+Shift+Z redo, + / − / 0 zoom, D theme.
         </footer>
       </div>
     </div>
@@ -223,7 +226,13 @@ const AXIS = {
   },
 } as const
 
-function AxisStep({ axis }: { axis: "x" | "y" }) {
+function AxisStep({
+  axis,
+  invalid,
+}: {
+  axis: "x" | "y"
+  invalid: ReadonlySet<string>
+}) {
   const cfg = AXIS[axis]
   const upper = axis.toUpperCase()
   const keys = {
@@ -241,10 +250,6 @@ function AxisStep({ axis }: { axis: "x" | "y" }) {
   const label = useDigitizer((s) => s[keys.label])
   const togglePickMode = useDigitizer((s) => s.togglePickMode)
   const swap = useDigitizer((s) => s.swap)
-
-  const invalid = (v: number | null) =>
-    (start !== null && start === end) ||
-    (scale === "log" && v !== null && v <= 0)
 
   return (
     <StepCard
@@ -288,14 +293,14 @@ function AxisStep({ axis }: { axis: "x" | "y" }) {
           label={<DotLabel color={cfg.dots[0]} text="value at start" />}
           placeholder={cfg.placeholders[0]}
           value={start}
-          invalid={invalid(start)}
+          invalid={invalid.has(`${axis}.start`)}
           onChange={(v) => useDigitizer.setState({ [keys.start]: v })}
         />
         <NumField
           label={<DotLabel color={cfg.dots[1]} text="value at end" />}
           placeholder={cfg.placeholders[1]}
           value={end}
-          invalid={invalid(end)}
+          invalid={invalid.has(`${axis}.end`)}
           onChange={(v) => useDigitizer.setState({ [keys.end]: v })}
         />
       </div>

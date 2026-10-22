@@ -9,9 +9,17 @@ import {
 } from "react-zoom-pan-pinch"
 import { cn } from "cn"
 import { toast } from "sonner"
-import { Maximize2, TrendingUp, Upload, ZoomIn, ZoomOut } from "lucide-react"
+import {
+  Maximize2,
+  Redo2,
+  TrendingUp,
+  Undo2,
+  Upload,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useDigitizer } from "../store"
+import { useDigitizer, useHistory } from "../store"
 import { renderSelection, SHAPE_CLASS } from "../lib/svg"
 import { C } from "../constants"
 
@@ -122,6 +130,7 @@ export function Stage() {
             </span>
           )}
           <div className="flex-1" />
+          <HistoryControls />
           <ZoomControls disabled={!svg} scale={scale} />
         </div>
 
@@ -206,6 +215,32 @@ function ZoomControls({
         title="Reset view (0)"
       >
         <Maximize2 />
+      </Button>
+    </>
+  )
+}
+
+function HistoryControls() {
+  const { undo, redo, canUndo, canRedo } = useHistory()
+  return (
+    <>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        disabled={!canUndo}
+        onClick={() => undo()}
+        title="Undo (Ctrl/⌘+Z)"
+      >
+        <Undo2 />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        disabled={!canRedo}
+        onClick={() => redo()}
+        title="Redo (Ctrl/⌘+Shift+Z)"
+      >
+        <Redo2 />
       </Button>
     </>
   )
