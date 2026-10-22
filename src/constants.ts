@@ -6,4 +6,5 @@ export const C = {
   curve: "#ca8a04",
   neutral: "#94a3b8",
   hover: "#6366f1",
+  bend: "#dc2626",
 } as const

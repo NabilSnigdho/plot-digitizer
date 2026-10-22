@@ -9,6 +9,7 @@ import type { AxisScale, PickMode, Sel } from "./types"
 import { getRawEndpoints, prepareSvg, toRoot } from "./lib/svg"
 import { AxisScaleSchema, calibrate, SampleCountSchema } from "./lib/calibrate"
 import { findPeaks } from "./lib/peaks"
+import { locateNodes, traceCurve } from "./lib/bends"
 
 const EMPTY_SEL: Sel = { xaxis: null, yaxis: null, curve: null }
 
@@ -129,7 +130,14 @@ export const useDigitizer = create<DigitizerState>()(
                 "pick a bezier path for the curve, not a straight line"
               )
             const length = el.getTotalLength()
-            const curve = { el, length, peaks: findPeaks(el, length) }
+            const trace = traceCurve(el, length)
+            const curve = {
+              el,
+              length,
+              peaks: findPeaks(el, length),
+              trace,
+              nodes: locateNodes(el, trace, length),
+            }
             set({
               sel: { ...sel, curve },
               pickMode: null,

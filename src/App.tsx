@@ -37,7 +37,7 @@ function range(rows: Row[], i: 0 | 1) {
 
 export function App() {
   const d = useDigitizer()
-  const { rows, peaks, issue, invalid } = useCalibration()
+  const { rows, peaks, issue, invalid, bends } = useCalibration()
   const { undo, redo } = useHistory()
   const { resolvedTheme, setTheme } = useTheme()
 
@@ -98,7 +98,7 @@ export function App() {
         </header>
 
         <div className="flex flex-wrap items-start gap-4 lg:flex-nowrap">
-          <Stage />
+          <Stage bends={bends} />
 
           {/* Sidebar */}
           <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[360px]">

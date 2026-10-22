@@ -99,12 +99,14 @@ function svgViewWidth(svg: SVGSVGElement): number {
 
 // Reflects the current selection on the drawing: role attributes (styled in
 // index.css), endpoint markers on the calibration lines, and clickable peak
-// markers (data-dg-peak = peak index) with their annotations.
+// markers (data-dg-peak = peak index) with their annotations, and rings
+// around the curve nodes where it bends backwards.
 export function renderSelection(
   svg: SVGSVGElement,
   sel: Sel,
   notes: Record<number, string>,
-  activePeak: number | null
+  activePeak: number | null,
+  bends: Pt[]
 ) {
   svg
     .querySelectorAll("[data-dg-role]")
@@ -169,4 +171,19 @@ export function renderSelection(
     t.textContent = note
     ml.appendChild(t)
   })
+
+  for (const pt of bends) {
+    const c = document.createElementNS(SVG_NS, "circle")
+    c.setAttribute("cx", String(pt.x))
+    c.setAttribute("cy", String(pt.y))
+    c.setAttribute("r", String(r * 1.6))
+    c.setAttribute("fill", "none")
+    c.setAttribute("stroke", C.bend)
+    c.setAttribute("stroke-width", String(r * 0.5))
+    c.setAttribute("pointer-events", "all")
+    const title = document.createElementNS(SVG_NS, "title")
+    title.textContent = "The curve bends backwards along x near this node"
+    c.appendChild(title)
+    ml.appendChild(c)
+  }
 }

@@ -13,17 +13,24 @@ export interface AxisSel {
   p1: Pt
 }
 
-// A local maximum of the curve: its arc length along the path and its
-// position in root <svg> coordinates.
-export interface Peak {
+// A point on the curve: its arc length along the path and its position in
+// root <svg> coordinates.
+export interface PathPoint {
   len: number
   pt: Pt
 }
+
+// A local maximum of the curve.
+export type Peak = PathPoint
 
 export interface CurveSel {
   el: SVGPathElement
   length: number
   peaks: Peak[]
+  // points evenly spaced along the path, in root <svg> coordinates
+  trace: Pt[]
+  // the path's nodes (segment end points), in drawing order
+  nodes: PathPoint[]
 }
 
 export interface Sel {

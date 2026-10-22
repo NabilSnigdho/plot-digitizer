@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { useDigitizer, useHistory } from "../store"
 import { renderSelection, SHAPE_CLASS } from "../lib/svg"
 import { C } from "../constants"
+import type { Pt } from "../types"
 
 // Moving further than this between pointerdown and click counts as a pan.
 const CLICK_SLOP_PX = 4
@@ -52,7 +53,7 @@ async function loadFile(file: File) {
   }
 }
 
-export function Stage() {
+export function Stage({ bends }: { bends: Pt[] }) {
   const svg = useDigitizer((s) => s.svg)
   const fileName = useDigitizer((s) => s.fileName)
   const pickMode = useDigitizer((s) => s.pickMode)
@@ -109,8 +110,8 @@ export function Stage() {
   }, [svg])
 
   useEffect(() => {
-    if (svg) renderSelection(svg, sel, notes, activePeak)
-  }, [svg, sel, notes, activePeak])
+    if (svg) renderSelection(svg, sel, notes, activePeak, bends)
+  }, [svg, sel, notes, activePeak, bends])
 
   return (
     <section
