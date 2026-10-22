@@ -1,18 +1,45 @@
-import type { Pt, SVGShape } from "../types"
+import DOMPurify from "dompurify"
+import type { Pt, Sel } from "../types"
 import { C } from "../constants"
 
-export function getRawEndpoints(el: SVGShape): [Pt, Pt] {
-  const tag = el.tagName.toLowerCase()
-  if (tag === "line") {
+const SVG_NS = "http://www.w3.org/2000/svg"
+const MARKERS_ID = "__digitizer_markers"
+export const SHAPE_CLASS = "dg-shape"
+
+// Sanitizes untrusted SVG markup (scripts, on* handlers, javascript: URLs,
+// foreignObject, …) and prepares it for the stage. Throws on unusable input.
+export function prepareSvg(svgText: string): SVGSVGElement {
+  const frag = DOMPurify.sanitize(svgText, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    RETURN_DOM_FRAGMENT: true,
+  })
+  const svg = frag.querySelector("svg")
+  if (!svg) throw new Error("no <svg> element found")
+
+  const shapes = svg.querySelectorAll("path, line, polyline, polygon")
+  if (!shapes.length) throw new Error("no path/line/polyline elements found")
+  shapes.forEach((el) => el.classList.add(SHAPE_CLASS))
+
+  svg.style.width = "640px"
+  svg.style.height = "auto"
+  svg.removeAttribute("height")
+
+  const markers = document.createElementNS(SVG_NS, "g")
+  markers.setAttribute("id", MARKERS_ID)
+  svg.appendChild(markers)
+  return svg
+}
+
+export function getRawEndpoints(el: SVGGraphicsElement): [Pt, Pt] {
+  if (el instanceof SVGLineElement) {
     return [
-      { x: +(el.getAttribute("x1") ?? 0), y: +(el.getAttribute("y1") ?? 0) },
-      { x: +(el.getAttribute("x2") ?? 0), y: +(el.getAttribute("y2") ?? 0) },
+      { x: el.x1.baseVal.value, y: el.y1.baseVal.value },
+      { x: el.x2.baseVal.value, y: el.y2.baseVal.value },
     ]
   }
-  if (tag === "polyline" || tag === "polygon") {
-    const pts = (el as SVGPolylineElement).points
-    if (!pts || pts.numberOfItems < 2)
-      throw new Error("that shape has too few points")
+  if (el instanceof SVGPolylineElement || el instanceof SVGPolygonElement) {
+    const pts = el.points
+    if (pts.numberOfItems < 2) throw new Error("that shape has too few points")
     const a = pts.getItem(0)
     const b = pts.getItem(pts.numberOfItems - 1)
     return [
@@ -20,18 +47,36 @@ export function getRawEndpoints(el: SVGShape): [Pt, Pt] {
       { x: b.x, y: b.y },
     ]
   }
-  if (tag === "path") {
-    const p = el as SVGPathElement
-    const total = p.getTotalLength()
+  if (el instanceof SVGPathElement) {
+    const total = el.getTotalLength()
     if (!total) throw new Error("that path has zero length")
-    const p0 = p.getPointAtLength(0)
-    const p1 = p.getPointAtLength(total)
+    const p0 = el.getPointAtLength(0)
+    const p1 = el.getPointAtLength(total)
     return [
       { x: p0.x, y: p0.y },
       { x: p1.x, y: p1.y },
     ]
   }
-  throw new Error("unsupported element type: " + tag)
+  throw new Error("unsupported element type: " + el.tagName)
+}
+
+function rootSvg(el: SVGElement): SVGSVGElement | null {
+  let svg = el.ownerSVGElement
+  while (svg?.ownerSVGElement) svg = svg.ownerSVGElement
+  return svg
+}
+
+// Maps a point from an element's local coordinates to the root <svg> user
+// (viewBox) space. Going through screen CTMs cancels out the viewBox scaling,
+// the rendered width and any pan/zoom transform on the stage.
+export function toRoot(el: SVGGraphicsElement, pt: Pt): Pt {
+  const local = el.getScreenCTM()
+  const root = rootSvg(el)?.getScreenCTM()
+  if (!local || !root) return pt
+  const t = new DOMPoint(pt.x, pt.y).matrixTransform(
+    root.inverse().multiply(local)
+  )
+  return { x: t.x, y: t.y }
 }
 
 export function projectOntoLine(p: Pt, a: Pt, b: Pt): number {
@@ -42,7 +87,7 @@ export function projectOntoLine(p: Pt, a: Pt, b: Pt): number {
   return ((p.x - a.x) * dx + (p.y - a.y) * dy) / denom
 }
 
-export function svgViewWidth(svg: SVGSVGElement): number {
+function svgViewWidth(svg: SVGSVGElement): number {
   const vb = svg.viewBox?.baseVal
   if (vb?.width) return vb.width
   try {
@@ -52,9 +97,37 @@ export function svgViewWidth(svg: SVGSVGElement): number {
   }
 }
 
-export function resetShapeStyle(el: SVGShape) {
-  delete el.__role
-  el.style.stroke = C.neutral
-  el.style.strokeOpacity = "0.55"
-  el.style.strokeWidth = "2"
+// Reflects the current selection on the drawing: role attributes (styled in
+// index.css) and endpoint markers on the calibration lines.
+export function renderSelection(svg: SVGSVGElement, sel: Sel) {
+  svg
+    .querySelectorAll("[data-dg-role]")
+    .forEach((el) => el.removeAttribute("data-dg-role"))
+  for (const role of ["xaxis", "yaxis", "curve"] as const) {
+    sel[role]?.el.setAttribute("data-dg-role", role)
+  }
+
+  const ml = svg.querySelector(`#${MARKERS_ID}`)
+  if (!ml) return
+  ml.replaceChildren()
+  const r = svgViewWidth(svg) / 130
+  const addDot = (pt: Pt, color: string) => {
+    const c = document.createElementNS(SVG_NS, "circle")
+    c.setAttribute("cx", String(pt.x))
+    c.setAttribute("cy", String(pt.y))
+    c.setAttribute("r", String(r))
+    c.setAttribute("fill", color)
+    c.setAttribute("stroke", color)
+    c.setAttribute("stroke-width", String(r * 0.35))
+    c.style.pointerEvents = "none"
+    ml.appendChild(c)
+  }
+  if (sel.xaxis) {
+    addDot(sel.xaxis.p0, C.x)
+    addDot(sel.xaxis.p1, C.x2)
+  }
+  if (sel.yaxis) {
+    addDot(sel.yaxis.p0, C.y)
+    addDot(sel.yaxis.p1, C.y2)
+  }
 }

@@ -1,5 +1,6 @@
 export type PickMode = "xaxis" | "yaxis" | "curve" | null
-export type SVGShape = SVGGraphicsElement & { __role?: string }
+export type AxisScale = "linear" | "log"
+export type Row = [number, number]
 
 export interface Pt {
   x: number
@@ -7,7 +8,7 @@ export interface Pt {
 }
 
 export interface AxisSel {
-  el: SVGShape
+  el: SVGGraphicsElement
   p0: Pt
   p1: Pt
 }
@@ -21,18 +22,4 @@ export interface Sel {
   xaxis: AxisSel | null
   yaxis: AxisSel | null
   curve: CurveSel | null
-}
-
-export interface FormVals {
-  xValStart: string
-  xValEnd: string
-  yValStart: string
-  yValEnd: string
-  sampleCount: string
-}
-
-export interface SelBools {
-  xSel: boolean
-  ySel: boolean
-  curveSel: boolean
 }

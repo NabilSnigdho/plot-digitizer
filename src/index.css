@@ -129,3 +129,38 @@
     @apply font-sans;
   }
 }
+
+/* ── digitizer stage: shapes of the uploaded SVG (colors set on .dg-stage) ── */
+/* !important overrides the presentation styles Inkscape writes inline. */
+.dg-stage .dg-shape {
+  fill: none !important;
+  stroke: var(--dg-neutral) !important;
+  stroke-opacity: 0.55 !important;
+  stroke-width: 2px !important;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+}
+.dg-stage[data-picking] .dg-shape {
+  cursor: crosshair;
+}
+.dg-stage[data-picking] .dg-shape:not([data-dg-role]):hover {
+  stroke: var(--dg-hover) !important;
+  stroke-opacity: 1 !important;
+  stroke-width: 3px !important;
+}
+.dg-stage .dg-shape[data-dg-role] {
+  stroke-opacity: 0.9 !important;
+}
+.dg-stage .dg-shape[data-dg-role="xaxis"] {
+  stroke: var(--dg-x) !important;
+}
+.dg-stage .dg-shape[data-dg-role="yaxis"] {
+  stroke: var(--dg-y) !important;
+}
+.dg-stage .dg-shape[data-dg-role="curve"] {
+  stroke: var(--dg-curve) !important;
+  stroke-width: 2.5px !important;
+}
+.dg-stage image {
+  pointer-events: none;
+}

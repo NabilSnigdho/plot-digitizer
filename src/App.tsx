@@ -1,32 +1,62 @@
 import { cn } from "cn"
-import {
-  ArrowLeftRight,
-  Download,
-  Maximize2,
-  TrendingUp,
-  Upload,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react"
+import { useTheme } from "next-themes"
+import { useHotkeys } from "react-hotkeys-hook"
+import { toast } from "sonner"
+import { ArrowLeftRight, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useDigitizer } from "./hooks/useDigitizer"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { useCalibration, useDigitizer } from "./store"
+import { Stage } from "./components/Stage"
 import { MiniChart } from "./components/MiniChart"
 import { StepCard, StepNum } from "./components/StepCard"
 import { SelTag } from "./components/SelTag"
 import {
-  FieldGroup,
   DotLabel,
-  NumInput,
-  TxtInput,
+  NumField,
+  TextField,
   Stat,
   PreviewRows,
 } from "./components/primitives"
+import { SAMPLE_MAX, SAMPLE_MIN } from "./lib/calibrate"
+import { downloadCsv } from "./lib/export"
 import { fmt } from "./lib/format"
+import type { AxisScale, Row } from "./types"
+
+function range(rows: Row[], i: 0 | 1) {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const r of rows) {
+    if (r[i] < lo) lo = r[i]
+    if (r[i] > hi) hi = r[i]
+  }
+  return `${fmt(lo)} – ${fmt(hi)}`
+}
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export function App() {
-  const { setFileInputRef, setStageRef, ...d } = useDigitizer()
+  const d = useDigitizer()
+  const { rows, issue } = useCalibration()
+  const { resolvedTheme, setTheme } = useTheme()
+
+  const exportCsv = () => {
+    if (!rows) return
+    downloadCsv(rows, d.xLabel, d.yLabel)
+    toast.success("Downloaded digitized_curve.csv")
+  }
+
+  useHotkeys("x", () => d.togglePickMode("xaxis"))
+  useHotkeys("y", () => d.togglePickMode("yaxis"))
+  useHotkeys("c", () => d.togglePickMode("curve"))
+  useHotkeys("escape", () => useDigitizer.setState({ pickMode: null }))
+  useHotkeys("mod+s", exportCsv, { preventDefault: true })
+  useHotkeys("d", () => setTheme(resolvedTheme === "dark" ? "light" : "dark"))
+
+  const status = !d.svg
+    ? "No file loaded"
+    : rows
+      ? "Curve digitized"
+      : "File loaded — pick your calibration lines"
 
   return (
     <div className="min-h-screen bg-background">
@@ -45,228 +75,28 @@ export function App() {
           <span
             className={cn(
               "inline-flex items-center rounded-full border px-3 py-1 text-xs",
-              d.svgLoaded
+              d.svg
                 ? "border-primary/20 bg-primary/10 text-primary"
                 : "border-border bg-muted text-muted-foreground"
             )}
           >
-            {d.globalStatus}
+            {status}
           </span>
         </header>
 
         <div className="flex flex-wrap items-start gap-4 lg:flex-nowrap">
-          {/* Canvas */}
-          <section className="min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-            <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-              <Button size="sm" variant="outline" onClick={d.openFilePicker}>
-                <Upload />
-                Upload SVG
-              </Button>
-              <input
-                ref={setFileInputRef}
-                type="file"
-                accept=".svg,image/svg+xml"
-                hidden
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) d.loadFile(f)
-                }}
-              />
-              {d.fileName && (
-                <span className="max-w-[200px] truncate text-xs text-muted-foreground">
-                  {d.fileName}
-                </span>
-              )}
-              <div className="flex-1" />
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                disabled={!d.svgLoaded}
-                onClick={() => d.setZoom((z) => Math.max(0.25, z / 1.4))}
-              >
-                <ZoomOut />
-              </Button>
-              <span className="w-12 text-center text-xs text-muted-foreground tabular-nums">
-                {Math.round(d.zoom * 100)}%
-              </span>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                disabled={!d.svgLoaded}
-                onClick={() => d.setZoom((z) => Math.min(6, z * 1.4))}
-              >
-                <ZoomIn />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                disabled={!d.svgLoaded}
-                onClick={() => d.setZoom(() => 1)}
-              >
-                <Maximize2 />
-              </Button>
-            </div>
-
-            {/* Stage */}
-            <div
-              className={cn(
-                "relative overflow-auto bg-muted/40",
-                d.dragOver && "ring-2 ring-primary ring-inset"
-              )}
-              style={{
-                height: "min(62vh, 620px)",
-                backgroundImage:
-                  "linear-gradient(45deg,oklch(0.85 0 0 / .4) 25%,transparent 25%)," +
-                  "linear-gradient(-45deg,oklch(0.85 0 0 / .4) 25%,transparent 25%)," +
-                  "linear-gradient(45deg,transparent 75%,oklch(0.85 0 0 / .4) 75%)," +
-                  "linear-gradient(-45deg,transparent 75%,oklch(0.85 0 0 / .4) 75%)",
-                backgroundSize: "20px 20px",
-                backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0px",
-              }}
-              onDragOver={(e) => {
-                e.preventDefault()
-                d.setDragOver(true)
-              }}
-              onDragLeave={() => d.setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault()
-                d.setDragOver(false)
-                const f = e.dataTransfer.files?.[0]
-                if (f) d.loadFile(f)
-              }}
-            >
-              <div className="inline-block min-h-full min-w-full p-6">
-                <div ref={setStageRef} />
-              </div>
-              {!d.svgLoaded && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground">
-                  <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
-                    <TrendingUp className="size-6" />
-                  </div>
-                  <div>
-                    Upload the SVG you traced in Inkscape
-                    <br />
-                    (axis lines + curve path) to begin.
-                    <br />
-                    <span className="text-xs opacity-60">
-                      Or drag-and-drop here.
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
+          <Stage />
 
           {/* Sidebar */}
           <aside className="flex w-full shrink-0 flex-col gap-3 lg:w-[360px]">
-            {/* Step 1 — X axis */}
-            <StepCard number={1} title="Calibrate X axis" done={d.xSel}>
-              <p className="text-xs text-muted-foreground">
-                Click the straight line along the x-axis. First node ={" "}
-                <b>start</b>, last = <b>end</b>.
-              </p>
-              <Button
-                size="sm"
-                variant={d.pickMode === "xaxis" ? "default" : "outline"}
-                disabled={!d.svgLoaded}
-                onClick={() =>
-                  d.setPickMode((m) => (m === "xaxis" ? null : "xaxis"))
-                }
-              >
-                {d.pickMode === "xaxis"
-                  ? "Click a line in the drawing…"
-                  : "Pick X-axis line"}
-              </Button>
-              {d.xSel && (
-                <SelTag color="teal">
-                  <Button size="xs" variant="ghost" onClick={d.swapX}>
-                    <ArrowLeftRight />
-                    swap
-                  </Button>
-                </SelTag>
-              )}
-              <div className="grid grid-cols-2 gap-2">
-                <FieldGroup
-                  label={<DotLabel color="bg-teal-500" text="value at start" />}
-                >
-                  <NumInput
-                    placeholder="0"
-                    value={d.xValStart}
-                    onChange={d.handleXValStart}
-                  />
-                </FieldGroup>
-                <FieldGroup
-                  label={<DotLabel color="bg-teal-700" text="value at end" />}
-                >
-                  <NumInput
-                    placeholder="20"
-                    value={d.xValEnd}
-                    onChange={d.handleXValEnd}
-                  />
-                </FieldGroup>
-              </div>
-              <FieldGroup label="Column name">
-                <TxtInput value={d.xLabel} onChange={d.setXLabel} />
-              </FieldGroup>
-            </StepCard>
-
-            {/* Step 2 — Y axis */}
-            <StepCard number={2} title="Calibrate Y axis" done={d.ySel}>
-              <p className="text-xs text-muted-foreground">
-                Same idea, along the y-axis.
-              </p>
-              <Button
-                size="sm"
-                variant={d.pickMode === "yaxis" ? "default" : "outline"}
-                disabled={!d.svgLoaded}
-                onClick={() =>
-                  d.setPickMode((m) => (m === "yaxis" ? null : "yaxis"))
-                }
-              >
-                {d.pickMode === "yaxis"
-                  ? "Click a line in the drawing…"
-                  : "Pick Y-axis line"}
-              </Button>
-              {d.ySel && (
-                <SelTag color="orange">
-                  <Button size="xs" variant="ghost" onClick={d.swapY}>
-                    <ArrowLeftRight />
-                    swap
-                  </Button>
-                </SelTag>
-              )}
-              <div className="grid grid-cols-2 gap-2">
-                <FieldGroup
-                  label={
-                    <DotLabel color="bg-orange-500" text="value at start" />
-                  }
-                >
-                  <NumInput
-                    placeholder="0"
-                    value={d.yValStart}
-                    onChange={d.handleYValStart}
-                  />
-                </FieldGroup>
-                <FieldGroup
-                  label={<DotLabel color="bg-orange-700" text="value at end" />}
-                >
-                  <NumInput
-                    placeholder="6000"
-                    value={d.yValEnd}
-                    onChange={d.handleYValEnd}
-                  />
-                </FieldGroup>
-              </div>
-              <FieldGroup label="Column name">
-                <TxtInput value={d.yLabel} onChange={d.setYLabel} />
-              </FieldGroup>
-            </StepCard>
+            <AxisStep axis="x" />
+            <AxisStep axis="y" />
 
             {/* Step 3 — Curve */}
             <StepCard
               number={3}
               title="Pick the traced curve"
-              done={d.curveSel}
+              done={!!d.sel.curve}
             >
               <p className="text-xs text-muted-foreground">
                 Click the bezier path traced over the data. Must be a path, not
@@ -275,52 +105,54 @@ export function App() {
               <Button
                 size="sm"
                 variant={d.pickMode === "curve" ? "default" : "outline"}
-                disabled={!d.svgLoaded}
-                onClick={() =>
-                  d.setPickMode((m) => (m === "curve" ? null : "curve"))
-                }
+                disabled={!d.svg}
+                onClick={() => d.togglePickMode("curve")}
+                title="Shortcut: C"
               >
                 {d.pickMode === "curve"
                   ? "Click the curve in the drawing…"
                   : "Pick curve path"}
               </Button>
-              {d.curveSel && (
+              {d.sel.curve && (
                 <SelTag color="amber">
                   <span className="font-mono text-muted-foreground">
-                    {d.curveLen}
+                    {d.sel.curve.length.toFixed(1)} px
                   </span>
                 </SelTag>
               )}
-              <FieldGroup label="Sample points">
-                <NumInput
-                  placeholder="500"
-                  value={d.sampleCount}
-                  onChange={d.handleSampleCount}
-                />
-              </FieldGroup>
+              <NumField
+                label="Sample points"
+                placeholder="500"
+                value={d.sampleCount}
+                min={SAMPLE_MIN}
+                max={SAMPLE_MAX}
+                onChange={(v) =>
+                  useDigitizer.setState({ sampleCount: v ?? 500 })
+                }
+              />
             </StepCard>
 
             {/* Step 4 — Export */}
             <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 shadow-sm">
               <div className="flex items-center gap-2">
-                <StepNum done={!!d.rows}>4</StepNum>
+                <StepNum done={!!rows}>4</StepNum>
                 <h2 className="text-sm font-semibold">Export</h2>
               </div>
 
-              {d.rows && d.rows.length > 0 && (
+              {rows && rows.length > 0 && (
                 <>
                   <div className="flex flex-wrap gap-4">
-                    <Stat v={String(d.rows.length)} k="points" />
-                    <Stat
-                      v={`${fmt(Math.min(...d.rows.map((r) => r[0])))} – ${fmt(Math.max(...d.rows.map((r) => r[0])))}`}
-                      k={d.xLabel || "x range"}
-                    />
-                    <Stat
-                      v={`${fmt(Math.min(...d.rows.map((r) => r[1])))} – ${fmt(Math.max(...d.rows.map((r) => r[1])))}`}
-                      k={d.yLabel || "y range"}
-                    />
+                    <Stat v={String(rows.length)} k="points" />
+                    <Stat v={range(rows, 0)} k={d.xLabel || "x range"} />
+                    <Stat v={range(rows, 1)} k={d.yLabel || "y range"} />
                   </div>
-                  <MiniChart rows={d.rows} />
+                  <MiniChart
+                    rows={rows}
+                    xLabel={d.xLabel}
+                    yLabel={d.yLabel}
+                    xScale={d.xScale}
+                    yScale={d.yScale}
+                  />
                   <table className="w-full border-collapse text-xs">
                     <thead>
                       <tr>
@@ -333,45 +165,146 @@ export function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      <PreviewRows rows={d.rows} />
+                      <PreviewRows rows={rows} />
                     </tbody>
                   </table>
                 </>
               )}
 
               <Button
-                disabled={!d.rows}
-                onClick={d.exportCsv}
+                disabled={!rows}
+                onClick={exportCsv}
                 className="w-full"
+                title="Shortcut: Ctrl/⌘+S"
               >
                 <Download />
                 Export CSV
               </Button>
 
-              {(d.status.msg || d.computeHint) && (
-                <p
-                  className={cn(
-                    "text-xs",
-                    d.status.error
-                      ? "text-destructive"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  {d.status.msg || d.computeHint}
-                </p>
-              )}
+              {issue && <p className="text-xs text-destructive">{issue}</p>}
             </div>
           </aside>
         </div>
 
         <footer className="text-xs leading-relaxed text-muted-foreground">
-          Works fully in your browser — nothing is uploaded anywhere. If a click
-          doesn&apos;t land on a thin line, zoom in first. Axis lines can be
-          rotated or in a group with a transform — calibration is computed by
-          projection onto each line&apos;s own direction, so that&apos;s fine.
+          Works fully in your browser — nothing is uploaded anywhere. Scroll to
+          zoom and drag to pan; zoom in if a click doesn&apos;t land on a thin
+          line. Axis lines can be rotated or in a group with a transform —
+          calibration is computed by projection onto each line&apos;s own
+          direction, so that&apos;s fine. Shortcuts: X / Y / C pick, Esc cancel,
+          + / − / 0 zoom, D theme.
         </footer>
       </div>
     </div>
+  )
+}
+
+const AXIS = {
+  x: {
+    number: 1,
+    mode: "xaxis",
+    tag: "teal",
+    dots: ["bg-teal-500", "bg-teal-700"],
+    hint: (
+      <>
+        Click the straight line along the x-axis. First node = <b>start</b>,
+        last = <b>end</b>.
+      </>
+    ),
+    placeholders: ["0", "20"],
+  },
+  y: {
+    number: 2,
+    mode: "yaxis",
+    tag: "orange",
+    dots: ["bg-orange-500", "bg-orange-700"],
+    hint: <>Same idea, along the y-axis.</>,
+    placeholders: ["0", "6000"],
+  },
+} as const
+
+function AxisStep({ axis }: { axis: "x" | "y" }) {
+  const cfg = AXIS[axis]
+  const upper = axis.toUpperCase()
+  const keys = {
+    start: `${axis}Start`,
+    end: `${axis}End`,
+    scale: `${axis}Scale`,
+    label: `${axis}Label`,
+  } as const
+  const svg = useDigitizer((s) => s.svg)
+  const picking = useDigitizer((s) => s.pickMode === cfg.mode)
+  const selected = useDigitizer((s) => !!s.sel[cfg.mode])
+  const start = useDigitizer((s) => s[keys.start])
+  const end = useDigitizer((s) => s[keys.end])
+  const scale = useDigitizer((s) => s[keys.scale])
+  const label = useDigitizer((s) => s[keys.label])
+  const togglePickMode = useDigitizer((s) => s.togglePickMode)
+  const swap = useDigitizer((s) => s.swap)
+
+  const invalid = (v: number | null) =>
+    (start !== null && start === end) ||
+    (scale === "log" && v !== null && v <= 0)
+
+  return (
+    <StepCard
+      number={cfg.number}
+      title={`Calibrate ${upper} axis`}
+      done={selected}
+    >
+      <p className="text-xs text-muted-foreground">{cfg.hint}</p>
+      <Button
+        size="sm"
+        variant={picking ? "default" : "outline"}
+        disabled={!svg}
+        onClick={() => togglePickMode(cfg.mode)}
+        title={`Shortcut: ${upper}`}
+      >
+        {picking ? "Click a line in the drawing…" : `Pick ${upper}-axis line`}
+      </Button>
+      {selected && (
+        <SelTag color={cfg.tag}>
+          <Button size="xs" variant="ghost" onClick={() => swap(axis)}>
+            <ArrowLeftRight />
+            swap
+          </Button>
+        </SelTag>
+      )}
+      <ToggleGroup
+        variant="outline"
+        size="sm"
+        spacing={0}
+        value={[scale]}
+        onValueChange={(v) => {
+          const next = v[0] as AxisScale | undefined
+          if (next) useDigitizer.setState({ [keys.scale]: next })
+        }}
+      >
+        <ToggleGroupItem value="linear">Linear</ToggleGroupItem>
+        <ToggleGroupItem value="log">Log</ToggleGroupItem>
+      </ToggleGroup>
+      <div className="grid grid-cols-2 gap-2">
+        <NumField
+          label={<DotLabel color={cfg.dots[0]} text="value at start" />}
+          placeholder={cfg.placeholders[0]}
+          value={start}
+          invalid={invalid(start)}
+          onChange={(v) => useDigitizer.setState({ [keys.start]: v })}
+        />
+        <NumField
+          label={<DotLabel color={cfg.dots[1]} text="value at end" />}
+          placeholder={cfg.placeholders[1]}
+          value={end}
+          invalid={invalid(end)}
+          onChange={(v) => useDigitizer.setState({ [keys.end]: v })}
+        />
+      </div>
+      <TextField
+        label="Column name"
+        value={label}
+        onChange={(v) => useDigitizer.setState({ [keys.label]: v })}
+      />
+    </StepCard>
   )
 }
 
